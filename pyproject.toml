@@ -9,7 +9,7 @@ package-mode = false   # prevent poetry from trying to package your app
 [tool.poetry.dependencies]
 python = ">=3.13"
 fastapi = ">=0.116.1,<0.117.0"
-uvicorn = { extras = ["standard"], version = ">=0.35.0,<0.36.0" }
+uvicorn = {extras = ["standard"], version = "^0.36.0"}
 sqlalchemy = ">=2.0.43,<3.0.0"
 psycopg = { extras = ["binary"], version = ">=3.2.9,<4.0.0" }
 python-dotenv = ">=1.1.1,<2.0.0"
@@ -17,6 +17,7 @@ pydantic = "^2.11.7"
 pydantic-settings = "^2.10.1"
 snowflake-connector-python = "^3.12.2"
 snowflake-sqlalchemy = "^1.5.2"
+gunicorn = "^23.0.0"
 
 
 [build-system]
