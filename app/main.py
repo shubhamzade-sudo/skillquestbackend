@@ -3,7 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.settings import settings
 
-from app.routers import topevaluation, jd_master, employee, snow_jd_master
+# ✅ updated imports (no more topevaluation)
+from app.routers import jd_matching_score, jd_master, employee, snow_jd_master
 
 app = FastAPI(title=settings.app_name)
 
@@ -15,13 +16,14 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,       
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(topevaluation.router)
+# ✅ new router names
+app.include_router(jd_matching_score.router)
 app.include_router(jd_master.router)
 app.include_router(employee.router)
 app.include_router(snow_jd_master.router)
