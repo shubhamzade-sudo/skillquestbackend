@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.settings import settings
 
 # ✅ updated imports (no more topevaluation)
-from app.routers import jd_matching_score, jd_master, employee, snow_jd_master
+from app.routers import jd_matching_score, jd_master, employee, snow_employee
 
 app = FastAPI(title=settings.app_name)
 
@@ -26,7 +26,7 @@ app.add_middleware(
 app.include_router(jd_matching_score.router)
 app.include_router(jd_master.router)
 app.include_router(employee.router)
-app.include_router(snow_jd_master.router)
+app.include_router(snow_employee.router)
 
 @app.get("/health")
 def health():

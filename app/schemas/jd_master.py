@@ -17,6 +17,7 @@ class ModelStatus(str, Enum):
     FAILED = "Failed"
 
 class JDMasterBase(BaseModel):
+    jd_id: Optional[int] = None
     title: str
     description: Optional[str] = None
     required_skills: Optional[str] = None

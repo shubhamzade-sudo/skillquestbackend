@@ -7,7 +7,7 @@ from app.schemas.jd_master import JDMasterRead, JDMasterBase, JDMasterUpdate
 from app.crud import jd_master as crud
 from app.db.session import SessionLocal
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+router = APIRouter(prefix="/jobs", tags=["jd-jobs"])
 
 def get_db():
     db = SessionLocal()
