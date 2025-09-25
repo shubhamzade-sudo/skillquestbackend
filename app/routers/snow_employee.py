@@ -1,25 +1,37 @@
 # app/routers/snow_employee.py
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from typing import Optional, List, Any
+from pydantic import BaseModel
+from typing import Optional, List
 from decimal import Decimal
-import os
 import snowflake.connector
-import json
+import os
+
+# import global settings instance
+from app.core.settings import settings
 
 router = APIRouter(prefix="/snow", tags=["Snowflake"])
 
-# --- Config (use env vars in production) ---
-SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER", "skillquest")
-SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD", "Skillquest@123")
-SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT", "KYSHCAK-SZC76532")  # replace with full locator if needed
-SNOWFLAKE_ROLE = os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN")
-SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
-SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE", "SKILL_QUEST")
-SNOWFLAKE_SCHEMA = os.getenv("SNOWFLAKE_SCHEMA", "DEV")
+# --- Config (read from app.core.settings, fallback to env/defaults) ---
+def _s(name: str, default: Optional[str] = None) -> Optional[str]:
+    # settings uses snake_case attribute names
+    val = getattr(settings, name.lower(), None)
+    if val:
+        return val
+    # fallback to environment variable (in case)
+    return os.getenv(name.upper(), default)
+
+SNOWFLAKE_USER = _s("snowflake_user")
+SNOWFLAKE_PASSWORD = _s("snowflake_password")
+SNOWFLAKE_ACCOUNT = _s("snowflake_account")
+SNOWFLAKE_ROLE = _s("snowflake_role", "ACCOUNTADMIN")
+SNOWFLAKE_WAREHOUSE = _s("snowflake_warehouse", "COMPUTE_WH")
+SNOWFLAKE_DATABASE = _s("snowflake_database", "SKILL_QUEST")
+SNOWFLAKE_SCHEMA = _s("snowflake_schema", "DEV")
 
 # --- Helper: connect ---
 def get_connection():
+    if not (SNOWFLAKE_USER and SNOWFLAKE_PASSWORD and SNOWFLAKE_ACCOUNT):
+        raise RuntimeError("Snowflake credentials not configured. Check .env and Settings.")
     return snowflake.connector.connect(
         user=SNOWFLAKE_USER,
         password=SNOWFLAKE_PASSWORD,
@@ -38,9 +50,7 @@ def rows_to_dicts(columns: List[str], rows: List[tuple]) -> List[dict]:
         d = {}
         for i, col in enumerate(columns):
             val = r[i]
-            # convert Decimal to float (or str if you want)
             if isinstance(val, Decimal):
-                # If precision matters, consider str(val)
                 d[col] = float(val)
             else:
                 d[col] = val
@@ -51,7 +61,6 @@ def rows_to_dicts(columns: List[str], rows: List[tuple]) -> List[dict]:
 # Pydantic models
 # -------------------------
 class EmployeeIn(BaseModel):
-    # adjust fields to match your EMPLOYEE_MASTER columns
     employee_id: Optional[int] = None
     name: str
     email: Optional[str] = None
@@ -59,7 +68,8 @@ class EmployeeIn(BaseModel):
     location: Optional[str] = None
 
 class JDIn(BaseModel):
-    jd_id: Optional[int] = None   # 👈 allow frontend to send jd_id
+    # frontend-supplied REQ id (optional). Keep int if you want numeric-only.
+    jd_id: Optional[int] = None
     title: str
     description: Optional[str] = None
     required_skills: Optional[str] = None
@@ -70,21 +80,16 @@ class JDIn(BaseModel):
     status: Optional[str] = None
     model_status: Optional[str] = None
 
-
 # -------------------------
 # EMPLOYEES endpoints
 # -------------------------
 @router.get("/employees")
 def get_employees(limit: int = 50):
-    """
-    Get employees (limit default 50)
-    """
     conn = None
     cur = None
     try:
         conn = get_connection()
         cur = conn.cursor()
-        # use fully-qualified or rely on connection DB/SCHEMA
         cur.execute("SELECT * FROM EMPLOYEE_MASTER LIMIT %s", (limit,))
         cols = [c[0] for c in cur.description]
         rows = cur.fetchall()
@@ -99,16 +104,11 @@ def get_employees(limit: int = 50):
 
 @router.post("/employees", status_code=201)
 def create_employee(payload: EmployeeIn):
-    """
-    Insert a new employee. Adjust columns as per your EMPLOYEE_MASTER.
-    This example assumes columns: name, email, designation, location
-    """
     conn = None
     cur = None
     try:
         conn = get_connection()
         cur = conn.cursor()
-
         insert_sql = """
         INSERT INTO EMPLOYEE_MASTER (name, email, designation, location)
         VALUES (%s, %s, %s, %s)
@@ -119,9 +119,7 @@ def create_employee(payload: EmployeeIn):
             payload.designation,
             payload.location
         ))
-
-        # fetch the latest inserted row (autoincrement jd_id style)
-        # Note: Snowflake doesn't provide a simple LAST_INSERT_ID; we query the recently inserted row.
+        # return latest row (ordered by first column)
         cur.execute("SELECT * FROM EMPLOYEE_MASTER ORDER BY 1 DESC LIMIT 1")
         cols = [c[0] for c in cur.description]
         row = cur.fetchone()
@@ -139,9 +137,6 @@ def create_employee(payload: EmployeeIn):
 # -------------------------
 @router.get("/jds")
 def get_jds(limit: int = 50):
-    """
-    Return jd_master rows
-    """
     conn = None
     cur = None
     try:
@@ -159,8 +154,6 @@ def get_jds(limit: int = 50):
         if conn:
             conn.close()
 
-
-
 @router.post("/jds", status_code=201)
 def create_jd(payload: JDIn):
     conn = None
@@ -169,32 +162,57 @@ def create_jd(payload: JDIn):
         conn = get_connection()
         cur = conn.cursor()
 
-        insert_sql = """
-        INSERT INTO JD_MASTER
-        (jd_id, title, description, required_skills, preferred_skills, 
-         experience_min, experience_max, location, status, model_status, updated_date)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, current_timestamp())
-        """
-        cur.execute(insert_sql, (
-            payload.jd_id,
-            payload.title,
-            payload.description,
-            payload.required_skills,
-            payload.preferred_skills,
-            payload.experience_min,
-            payload.experience_max,
-            payload.location,
-            payload.status,
-            payload.model_status
-        ))
+        # If frontend supplies jd_id (numeric), we insert it; otherwise rely on autoincrement
+        if payload.jd_id is not None:
+            insert_sql = """
+            INSERT INTO JD_MASTER
+            (jd_id, title, description, required_skills, preferred_skills, 
+             experience_min, experience_max, location, status, model_status, updated_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, current_timestamp())
+            """
+            cur.execute(insert_sql, (
+                int(payload.jd_id),
+                payload.title,
+                payload.description,
+                payload.required_skills,
+                payload.preferred_skills,
+                payload.experience_min,
+                payload.experience_max,
+                payload.location,
+                payload.status,
+                payload.model_status
+            ))
+            # fetch by provided jd_id
+            cur.execute("SELECT * FROM JD_MASTER WHERE jd_id = %s", (int(payload.jd_id),))
+        else:
+            # insert without jd_id (auto-incremented by Snowflake)
+            insert_sql = """
+            INSERT INTO JD_MASTER
+            (title, description, required_skills, preferred_skills, 
+             experience_min, experience_max, location, status, model_status, updated_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, current_timestamp())
+            """
+            cur.execute(insert_sql, (
+                payload.title,
+                payload.description,
+                payload.required_skills,
+                payload.preferred_skills,
+                payload.experience_min,
+                payload.experience_max,
+                payload.location,
+                payload.status,
+                payload.model_status
+            ))
+            # fetch last inserted row (highest jd_id)
+            cur.execute("SELECT * FROM JD_MASTER ORDER BY jd_id DESC LIMIT 1")
 
-        # fetch just inserted row (by jd_id)
-        cur.execute("SELECT * FROM JD_MASTER WHERE jd_id = %s", (payload.jd_id,))
         cols = [c[0] for c in cur.description]
         row = cur.fetchone()
         return {"jd": dict(zip(cols, row))}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if cur: cur.close()
-        if conn: conn.close()
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()

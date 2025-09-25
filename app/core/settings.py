@@ -12,14 +12,15 @@ class Settings(BaseSettings):
     # generic DB/url (optional)
     database_url: Optional[str] = None
 
-    # --- Snowflake config (declare env vars you will use) ---
-    sf_user: Optional[str] = None
-    sf_password: Optional[str] = None
-    sf_account: Optional[str] = None
-    sf_database: str = "SNOWFLAKE_LEARNING_DB"
-    sf_schema: str = "PUBLIC"
-    sf_warehouse: Optional[str] = None
-    sf_role: Optional[str] = None
+        # Snowflake settings
+    snowflake_user: Optional[str] = None
+    snowflake_password: Optional[str] = None
+    snowflake_account: Optional[str] = None
+    snowflake_role: Optional[str] = None
+    snowflake_warehouse: Optional[str] = None
+    snowflake_database: Optional[str] = None
+    snowflake_schema: Optional[str] = None
+
 
     # pydantic-settings configuration: read .env and be case-insensitive
     model_config = SettingsConfigDict(
